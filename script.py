@@ -123,11 +123,11 @@ def generate_vless_links(task_id):
     
     session = requests.Session()
     
-    # Step 1: Initialize session
+    # Step 1: Initialize session (UPDATED HEADERS)
     get_headers = {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0",
+        "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "ru",
+        "Accept-Language": "ru-RU,ru;q=0.9,en-RU;q=0.8,en;q=0.7,en-US;q=0.6",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1"
     }
@@ -138,15 +138,15 @@ def generate_vless_links(task_id):
         print(f"[Task {task_id}] [-] Failed to fetch initial cookies: {e}", file=sys.stderr)
         return bypass_links, main_links
 
-    # Step 2: Login / Registration POST
+    # Step 2: Login / Registration POST (UPDATED HEADERS & NEXT-ACTION)
     login_router_state_tree = '%5B%22%22%2C%7B%22children%22%3A%5B%22(auth)%22%2C%7B%22children%22%3A%5B%22login%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2Cnull%2Cnull%5D%7D%2Cnull%2Cnull%5D%7D%2Cnull%2Cnull%5D%7D%2Cnull%2Cnull%2Ctrue%5D'
     login_headers = {
         "Origin": "https://console.rscore.app",
         "Referer": "https://console.rscore.app/login",
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0", 
+        "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36", 
         "Accept": "text/x-component",
-        "Accept-Language": "ru",
-        "next-action": "60e2734e690917d7cbf9d399a43c14afdf77250fcb",
+        "Accept-Language": "ru-RU,ru;q=0.9,en-RU;q=0.8,en;q=0.7,en-US;q=0.6",
+        "next-action": "60847de45cc77b728ce188a50c3a992de842ab00b0",
         "next-router-state-tree": login_router_state_tree,
         "DNT": "1",
         "Sec-Fetch-Dest": "empty",
@@ -180,10 +180,10 @@ def generate_vless_links(task_id):
                     sub_headers = {
                         "Origin": "https://console.rscore.app",
                         "Referer": "https://console.rscore.app/",
-                        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0", 
+                        "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36", 
                         "Accept": "text/x-component",
-                        "Accept-Language": "ru",
-                        "next-action": "606d7b49472270b502774a7102f864151bc095d02d",
+                        "Accept-Language": "ru-RU,ru;q=0.9,en-RU;q=0.8,en;q=0.7,en-US;q=0.6",
+                        "next-action": "606d7b49472270b502774a7102f864151bc095d02d", # НУЖНО БУДЕТ ОБНОВИТЬ ЕСЛИ СКРИПТ УПАДЕТ НА ЭТОМ ШАГЕ
                         "next-router-state-tree": sub_router_state,
                         "DNT": "1",
                         "Sec-Fetch-Dest": "empty",
@@ -308,5 +308,3 @@ if __name__ == "__main__":
         print(f"[+] Successfully saved {len(all_main_links)} total Main links to {OUTPUT_FILE_MAIN}")
 
     print("\n[*] Script finished successfully.")
-
-
