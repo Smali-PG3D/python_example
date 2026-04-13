@@ -55,7 +55,7 @@ jobs:
         run: |          
           git config --local user.email "github-actions[bot]@users.noreply.github.com"          
           git config --local user.name "github-actions[bot]"          
-          git add main.txt sec.txt                    
+          git add m1.txt s1.txt                    
           git diff --staged --quiet || git commit -m "Automatic update of VLESS links (Multithreaded)"          
           git push
 
