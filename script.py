@@ -22,6 +22,16 @@ main_url = "https://console.rscore.app/"
 
 file_mode = 'w' if CLEAR_FILE else 'a'
 
+def extract_action_hash(html_text, fallback):
+    """
+    Extracts the 40-character hex string (Next.js server action hash) from HTML.
+    """
+    matches = re.findall(r'(?<![a-zA-Z0-9])[a-f0-9]{40}(?![a-zA-Z0-9])', html_text)
+    if matches:
+        # Return the most frequently occurring hash, or the first one found
+        return max(set(matches), key=matches.count)
+    return fallback
+
 def fetch_nodes(uuid, is_bypass=False, suffix="", task_id=1):
     """Fetches and parses VLESS nodes from the API given a UUID."""
     links = []
@@ -35,7 +45,6 @@ def fetch_nodes(uuid, is_bypass=False, suffix="", task_id=1):
     }
     
     # Garbage remarks to filter out from the main config
-    # DO NOT TRANSLATE THESE: They match the exact Cyrillic strings sent by the server
     forbidden_remarks = [
         "⬇️Обход Белых списков ниже⬇️", 
         "Сервера в другом конфиге", 
@@ -90,7 +99,7 @@ def fetch_nodes(uuid, is_bypass=False, suffix="", task_id=1):
                     if server_name: vless_url += f"&sni={server_name}"
                     if flow: vless_url += f"&flow={flow}"
                     
-                    # Add suffix to indicate it's an extended proxy (e.g. _3Days)
+                    # Add suffix to indicate it's an extended proxy
                     encoded_remarks = urllib.parse.quote(f"{remarks}{suffix}")
                     vless_url += f"#{encoded_remarks}"
                     
@@ -109,7 +118,7 @@ def fetch_nodes(uuid, is_bypass=False, suffix="", task_id=1):
     return links
 
 def generate_vless_links(task_id):
-    """Registers an account, extends subscription to 3 days, and returns 2 lists of VLESS URLs."""
+    """Registers an account, extends subscription, and returns lists of VLESS URLs."""
     bypass_links = []
     main_links = []
     
@@ -117,38 +126,39 @@ def generate_vless_links(task_id):
     random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
     test_email = f"test_{random_suffix}@example.com"
     test_password = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
-    
     test_first_name = "Kali_" + ''.join(random.choices(string.ascii_letters, k=5))
     test_last_name = "User_" + ''.join(random.choices(string.ascii_letters, k=5))
     
     session = requests.Session()
     
-    # Step 1: Initialize session
+    # Step 1: Initialize session and grab CSRF & Next Action Hash for Login
     get_headers = {
         "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "ru-RU,ru;q=0.9,en-RU;q=0.8,en;q=0.7,en-US;q=0.6",
+        "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1"
     }
     
     try:
-        session.get(login_url, headers=get_headers, timeout=10)
+        login_page_response = session.get(login_url, headers=get_headers, timeout=10)
+        # Fallback hash from your dump just in case regex fails
+        login_action_hash = extract_action_hash(login_page_response.text, "6023f11bd534443def0db7d971d13e8b629e768f9c")
     except Exception as e:
-        print(f"[Task {task_id}] [-] Failed to fetch initial cookies: {e}", file=sys.stderr)
+        print(f"[Task {task_id}] [-] Failed to fetch initial cookies/hash: {e}", file=sys.stderr)
         return bypass_links, main_links
 
     # Step 2: Login / Registration POST
     login_router_state_tree = '%5B%22%22%2C%7B%22children%22%3A%5B%22(auth)%22%2C%7B%22children%22%3A%5B%22login%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2Cnull%2Cnull%5D%7D%2Cnull%2Cnull%5D%7D%2Cnull%2Cnull%5D%7D%2Cnull%2Cnull%2Ctrue%5D'
+    
     login_headers = {
         "Origin": "https://console.rscore.app",
         "Referer": "https://console.rscore.app/login",
         "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36", 
         "Accept": "text/x-component",
-        "Accept-Language": "ru-RU,ru;q=0.9,en-RU;q=0.8,en;q=0.7,en-US;q=0.6",
-        "next-action": "60847de45cc77b728ce188a50c3a992de842ab00b0",
+        "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+        "next-action": login_action_hash,
         "next-router-state-tree": login_router_state_tree,
-        "DNT": "1",
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin"
@@ -165,13 +175,23 @@ def generate_vless_links(task_id):
     }
     
     try:
+        # allow_redirects=False to catch the 303 See Other
         response = session.post(login_url, headers=login_headers, files=login_files, allow_redirects=False)
         
         if response.status_code == 303:
+            # The requests.Session object will automatically store the __Secure-authjs.session-token here
             session_token = session.cookies.get("__Secure-authjs.session-token")
+            
             if session_token:
-                
-                # Step 3: Loop 3 times to extend the subscription to 3 days
+                # Step 3: Fetch main page to get the subscription Next Action Hash
+                try:
+                    main_page_response = session.get(main_url, headers=get_headers, timeout=10)
+                    sub_action_hash = extract_action_hash(main_page_response.text, "60791089998e58dee61ab1a307ef05c23a9b015327")
+                except Exception as e:
+                    print(f"[Task {task_id}] [-] Failed to fetch main page for sub hash: {e}", file=sys.stderr)
+                    return bypass_links, main_links
+
+                # Step 4: Loop 3 times to extend the subscription
                 sub_success = False
                 for sub_attempt in range(3):
                     print(f"[Task {task_id}] [~] Purchasing day {sub_attempt + 1}/3 for account {test_email}...")
@@ -182,10 +202,9 @@ def generate_vless_links(task_id):
                         "Referer": "https://console.rscore.app/",
                         "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36", 
                         "Accept": "text/x-component",
-                        "Accept-Language": "ru-RU,ru;q=0.9,en-RU;q=0.8,en;q=0.7,en-US;q=0.6",
-                        "next-action": "600811a5424090c362205d99265d115ffafbe7c1ce", # <--- ОБНОВЛЕННЫЙ ХЕШ ПРОДЛЕНИЯ
+                        "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+                        "next-action": sub_action_hash,
                         "next-router-state-tree": sub_router_state,
-                        "DNT": "1",
                         "Sec-Fetch-Dest": "empty",
                         "Sec-Fetch-Mode": "cors",
                         "Sec-Fetch-Site": "same-origin"
@@ -195,18 +214,18 @@ def generate_vless_links(task_id):
                         '0': (None, '[null,"$K1"]')
                     }
                     
-                    sub_response = session.post(main_url, headers=sub_headers, files=sub_files)
+                    # session.post automatically updates the session-token if the server responds with a new Set-Cookie
+                    sub_response = session.post(main_url, headers=sub_headers, files=sub_files, allow_redirects=False)
                     sub_response.encoding = 'utf-8'
                     
-                    # DO NOT TRANSLATE: Checking server's exact response string
-                    if "Подписка успешно оформлена" in sub_response.text or '"success":true' in sub_response.text:
+                    if "Подписка успешно оформлена" in sub_response.text or '"success":true' in sub_response.text or sub_response.status_code == 200:
                         sub_success = True
-                        time.sleep(1) # Reduced sleep in multithreading mode to keep it snappy
+                        time.sleep(1)
                     else:
                         print(f"[Task {task_id}] [-] Extension failed on attempt {sub_attempt + 1}. Moving to extraction.", file=sys.stderr)
                         break 
                 
-                # Step 4: Extract the configuration
+                # Step 5: Extract the configuration
                 if sub_success:
                     print(f"[Task {task_id}] [+] Subscription extended. Fetching configurations...")
                     cache_buster = ''.join(random.choices(string.digits, k=8))
@@ -234,13 +253,11 @@ def generate_vless_links(task_id):
                         if len(unique_links) >= 1 and not main_uuid: main_uuid = unique_links[0]
                         if len(unique_links) >= 2 and not bypass_uuid: bypass_uuid = unique_links[1]
                     
-                    # Step 5: Fetch ByPass nodes
                     if bypass_uuid:
                         bypass_links = fetch_nodes(bypass_uuid, is_bypass=True, suffix="_3Days", task_id=task_id)
                     else:
                         print(f"[Task {task_id}] [-] No ByPass UUID was found.", file=sys.stderr)
                         
-                    # Step 6: Fetch Main nodes
                     if main_uuid:
                         main_links = fetch_nodes(main_uuid, is_bypass=False, suffix="_3Days", task_id=task_id)
                     else:
@@ -259,12 +276,10 @@ def generate_vless_links(task_id):
 
     return bypass_links, main_links
 
-# Main execution logic
 if __name__ == "__main__":
     print(f"[*] Starting {REGISTRATIONS_COUNT} registration(s) using {THREADS} parallel threads...")
     print(f"[*] File mode: {'Overwrite' if CLEAR_FILE else 'Append'}")
 
-    # Ensure both files are created if they don't exist, or cleared if CLEAR_FILE is true
     if CLEAR_FILE:
         open(OUTPUT_FILE_BYPASS, 'w').close()
         open(OUTPUT_FILE_MAIN, 'w').close()
@@ -272,12 +287,9 @@ if __name__ == "__main__":
     all_bypass_links = []
     all_main_links = []
 
-    # Using ThreadPoolExecutor to run registrations concurrently
     with concurrent.futures.ThreadPoolExecutor(max_workers=THREADS) as executor:
-        # Submit all tasks
         future_to_task = {executor.submit(generate_vless_links, i + 1): i + 1 for i in range(REGISTRATIONS_COUNT)}
         
-        # Process results as they complete
         for future in concurrent.futures.as_completed(future_to_task):
             task_id = future_to_task[future]
             try:
@@ -294,7 +306,6 @@ if __name__ == "__main__":
             except Exception as exc:
                 print(f"[Task {task_id}] [-] Generated an exception: {exc}")
 
-    # Write all gathered links to files sequentially at the end to prevent race conditions
     if all_bypass_links:
         with open(OUTPUT_FILE_BYPASS, 'a', encoding='utf-8') as fb:
             for link in all_bypass_links:
